@@ -21,6 +21,5 @@ After you have installed the plugin, click on WP Source Control menu link and yo
 
 
 
-There is a Search Commit form at the bottom of this page, if you search by job no, you will find all the commits associated with the commit. You can view the files at the time of the commit and you can see the changes made as part of this commit.
+There is a Search Commit form at the bottom of this page, if you search by job no, you will find all the commits associated with the commit. You can view the files at the time of the commit and you can see the changes made as part of this commit by clicking on Diff.
 
-Unfortunately you can't view the page/post at the time the commit was made and this is because I haven't been able to find a after save post hook. Please let me know if you know it.
