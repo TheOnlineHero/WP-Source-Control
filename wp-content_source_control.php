@@ -55,8 +55,10 @@ PRIMARY KEY  (id)
    $sql = "CREATE TABLE $table_name (
 id mediumint(9) NOT NULL AUTO_INCREMENT, 
 revision_id mediumint(9), 
+post_id mediumint(9),
 job_id mediumint(9) DEFAULT 0,
 job_deleted mediumint(9) DEFAULT 0,
+current_content longtext NOT NULL,
 diff_content longtext NOT NULL,
 PRIMARY KEY  (id)
 );";
@@ -70,7 +72,12 @@ add_action( 'save_post', 'save_post_version' );
 function save_post_version( $postid ) {
     global $wpdb;
     $table_name = $wpdb->prefix . "version_control_posts";  
-    $rows_affected = $wpdb->insert( $table_name, array( 'revision_id' => $postid));
+    
+    $post_table = $wpdb->prefix . "posts";
+    $my_revision = $wpdb->get_row( $wpdb->prepare("SELECT * FROM $post_table WHERE post_type='revision' AND id= %d", $postid) );
+    $my_post = $wpdb->get_row( $wpdb->prepare("SELECT * FROM $post_table WHERE post_type IN ('page', 'post') AND id=%d", $my_revision->post_parent) );
+    
+    $rows_affected = $wpdb->insert( $table_name, array( 'revision_id' => $postid, 'post_id'=> $my_post->ID));
 }
 add_action( 'trashed_post', 'delete_post_version' );
 function delete_post_version( $postid ) {
@@ -102,9 +109,14 @@ function create_theme_snapshot($templates, $post_ids, $job_no, $description) {
 
         $table_name = $wpdb->prefix . "version_control_posts";
         
+        $post_table_name = $wpdb->prefix . "posts";
+        
         if ($post_ids != null) {
-            foreach ($post_ids as $post_id) {
-              $wpdb->update($table_name, array('job_id' => $wpdb->insert_id, 'diff_content' => get_diff_post($post_id)), array( 'job_id' => 0, 'revision_id' => $post_id));
+            foreach ($post_ids as $revision_id) {
+              $my_revision = $wpdb->get_row( $wpdb->prepare("SELECT * FROM $post_table_name WHERE post_type='revision' AND id= %d", $revision_id) );
+              $my_post = $wpdb->get_row( $wpdb->prepare("SELECT * FROM $post_table_name WHERE post_type IN ('page', 'post') AND id=%d", $my_revision->post_parent) );
+              
+              $wpdb->update($table_name, array('job_id' => $wpdb->insert_id, 'current_content' => $my_post->post_content,'diff_content' => get_diff_post($revision_id)), array( 'job_id' => 0, 'revision_id' => $revision_id));
             }
         }
         if ($templates != null) {
@@ -134,7 +146,7 @@ function print_updated_template_files($src) {
                 $my_template = $wpdb->get_row( $wpdb->prepare("SELECT * FROM $table_name WHERE orig_file_name = %s ORDER BY template_timestamp DESC", $src . '/' . $file) );
                 if ($my_template != null){
                     if ($my_template->template_timestamp != filemtime($src.'/'.$file)) {
-                        echo "<tr><td><input type=\"checkbox\" name=\"checkin_templates[]\" value=\"$formatted_src\"></td><td style='width: 800px;'>".$src.'/'.$file."</td><td>".date("l jS \of F Y h:i:s A", filemtime($src.'/'.$file))."</td></tr>";
+                        echo "<tr><td><input type=\"checkbox\" name=\"checkin_templates[]\" value=\"$formatted_src\"></td><td style='width: 800px;'>".$src.'/'.$file."</td><td>".date("l jS \of F Y h:i:s A", filemtime($src.'/'.$file))."</td><td><a href=\"".(get_option('siteurl'))."/wp-admin/admin.php?page=wp_content_source_control/source_control_list.php&vc_action=current_template_diff&id=".$my_template->id."\">Diff</a></td></tr>";
                     }
                 } else {
                     echo "<tr><td><input type=\"checkbox\" name=\"checkin_templates[]\" value=\"$formatted_src\"></td><td style='width: 800px;'>".$src.'/'.$file."</td><td>".date("l jS \of F Y h:i:s A", filemtime($src.'/'.$file))."</td></tr>";

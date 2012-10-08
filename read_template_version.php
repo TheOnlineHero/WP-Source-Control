@@ -1,6 +1,10 @@
 <?php
 
   function print_version_control_template_file($id) {
+    
+    // Javascript Back To Search Result.
+  	echo "<p><a href='javascript: history.go(-1)'>Back</a></p>";
+    
   	try{
   	  global $wpdb;
   		$table_name = $wpdb->prefix . "version_control_templates";
@@ -15,6 +19,10 @@
   	} catch (Exception $ex) {
   		echo "Sorry, version file no longer exists.";
   	}    
+  	
+  	// Javascript Back To Search Result.
+  	echo "<p><a href='javascript: history.go(-1)'>Back</a></p>";
+  	
   }
 
 ?>

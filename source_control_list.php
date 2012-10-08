@@ -7,8 +7,9 @@ require_once('source_control_path.php');
 global $wpdb;
 $table_name = $wpdb->prefix . "version_controls";
  
-wp_enqueue_script( 'jquery.ui.theme', plugins_url( '/js/jquery-ui-1.8.17.custom.js', __FILE__ ) );
-wp_enqueue_style( 'jquery.ui.theme', plugins_url( '/css/jquery-ui-1.8.17.custom.css', __FILE__ ) );
+wp_enqueue_script('jquery');
+wp_enqueue_script('jquery-ui-datepicker');
+wp_enqueue_style( 'jquery.ui.theme', "http://ajax.googleapis.com/ajax/libs/jqueryui/1.7.1/themes/ui-lightness/jquery-ui.css");
 
 if ($_POST["submit"] == "Commit") {
 	create_theme_snapshot($_POST["checkin_templates"], $_POST["checkin_post_ids"], $_POST['job_no'], $_POST['description']);
@@ -48,11 +49,23 @@ if ($_GET["vc_action"] == "template_diff") {
   
   require_once('source_control_template_diff.php');
   print_version_control_template_diff($_GET["id"]);
+
+} else if ($_GET["vc_action"] == "current_template_diff") {
+  
+  require_once('source_control_template_diff.php');  
+  $table_name =  $wpdb->prefix . "version_control_templates";
+  $my_template = $wpdb->get_row( $wpdb->prepare("SELECT * FROM $table_name WHERE id = %d", $_GET["id"]) );
+  print_current_version_control_template_diff($my_template->file_name,$my_template->orig_file_name);
   
 } else if ($_GET["vc_action"] == "template_view") {
   
   require_once('read_template_version.php');
 	print_version_control_template_file($_GET["id"]);
+
+} else if ($_GET["vc_action"] == "current_post_diff") {
+  
+  require_once('source_control_post_diff.php');
+	print_current_version_control_post_diff($_GET["id"]);
 	
 } else if ($_GET["vc_action"] == "post_diff") {
   
@@ -138,7 +151,7 @@ if ($_GET["vc_action"] == "template_diff") {
 
 		<?php $post_table = $wpdb->prefix . "posts"; ?>
 		<?php $version_post_name = $wpdb->prefix . "version_control_posts"; ?>
-		<?php $posts_changed = $wpdb->get_results("SELECT DISTINCT(p.post_title), p.ID, p.post_date FROM $post_table as p, $version_post_name as v WHERE p.id = v.revision_id AND (p.post_type = 'revision' AND job_id = '0') OR (p.post_type IN ('post', 'page') AND p.post_status = 'trash' AND job_id = '0')"); ?>
+		<?php $posts_changed = $wpdb->get_results("SELECT DISTINCT(p.post_title), p.ID, p.post_date FROM $post_table as p, $version_post_name as v WHERE p.id = v.revision_id AND (p.post_type = 'revision' AND job_id = '0') OR (p.post_type IN ('post', 'page') AND p.post_status = 'trash' AND job_id = '0') ORDER BY p.post_modified DESC"); ?>
 
 		<?php if ($posts_changed) { ?>
 			<h5>Post/Page That Have Recently Been Edited</h5>
@@ -160,6 +173,7 @@ if ($_GET["vc_action"] == "template_diff") {
 								$mysqldate = date("l jS \of F Y h:i:s A", $datetime);
 							?>
 							<td><?php echo($mysqldate); ?> UTC</td>
+							<td><a href="<?php echo(get_option('siteurl')); ?>/wp-admin/admin.php?page=wp_content_source_control/source_control_list.php&vc_action=current_post_diff&id=<?php echo($post_changed->ID); ?>">Diff</a></td>
 						</tr>
 					<?php } ?>
 				</tbody>
@@ -270,7 +284,7 @@ if ($_GET["vc_action"] == "template_diff") {
 
 				  <?php $post_table = $wpdb->prefix . "posts"; ?>
 				  <?php $table_name = $wpdb->prefix . "version_control_posts"; ?>
-				  <?php $posts_changed = $wpdb->get_results("SELECT * FROM $post_table as p, $table_name as v WHERE p.id = v.revision_id AND v.job_id = '".$result->id."' AND (p.post_type = 'revision') OR (p.post_type IN ('post', 'page') AND p.post_status = 'trash') ORDER BY v.id DESC"); ?>
+				  <?php $posts_changed = $wpdb->get_results("SELECT * FROM $post_table as p, $table_name as v WHERE p.id = v.revision_id AND v.job_id = '".$result->id."' AND (p.post_type = 'revision') OR (p.post_type IN ('post', 'page') AND p.post_status = 'trash') ORDER BY p.post_modified ASC"); ?>
 
 				  <?php if ($posts_changed) { ?>
 
@@ -289,7 +303,7 @@ if ($_GET["vc_action"] == "template_diff") {
 					  				<td style='width: 800px;'><?php echo($post_changed->post_title); ?></td>
 					  				<?php if ($post_changed->job_deleted == 0) { ?>
 
-					  					<td><!--a href="<php echo(get_option('siteurl')); >/wp-admin/admin.php?page=wp_content_source_control/source_control_list.php&vc_action=post_view&id=<php echo($post_changed->ID); >">View</a></td-->
+					  					<td><a href="<?php echo(get_option('siteurl')); ?>/wp-admin/admin.php?page=wp_content_source_control/source_control_list.php&vc_action=post_view&id=<?php echo($post_changed->ID); ?>">View</a></td>
 					  					<td><a href="<?php echo(get_option('siteurl')); ?>/wp-admin/admin.php?page=wp_content_source_control/source_control_list.php&vc_action=post_diff&id=<?php echo($post_changed->ID); ?>">Diff</a></td>
 					  					
 					  				<?php } else { ?>
