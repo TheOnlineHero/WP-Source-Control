@@ -1,11 +1,11 @@
 <?php
 /*
 Plugin Name: WP Content Source Control
-Plugin URI: http://URI_Of_Page_Describing_Plugin_and_Updates
+Plugin URI: http://wordpress.org/extend/plugins/wp-source-control/
 Description: Source Control For Your Theme Directory And Posts/Pages.
-Version: 1.0
-Author: Tom Skroza
-Author URI: 
+Version: 2.0
+Author: TheOnlineHero - Tom Skroza
+Author URI: http://theonlinehero-developer.blogspot.com.au/
 License: GPL2
 */
 
@@ -15,7 +15,9 @@ require_once("source_control_post_diff.php");
 add_action('admin_menu', 'register_source_control_page');
 
 function register_source_control_page() {
-   add_menu_page('WP Source Control', 'WP Source Control', 'update_themes', 'wp_content_source_control/source_control_list.php', '',  '', 1);
+   add_menu_page('WP Source Control', 'WP Source Control', 'update_themes', 'wp-source-control/source_control_list.php', '',  '', 1);
+   add_submenu_page('wp-source-control/source_control_list.php', 'Search Commit', 'Search Commit', 'update_themes', 'wp-source-control/source_control_search.php');
+   add_submenu_page('wp-source-control/source_control_list.php', 'Backup', 'Backup', 'update_themes', 'wp-source-control/source_control_backup.php');
 }
 
 function wp_content_source_activate() {
@@ -64,9 +66,67 @@ PRIMARY KEY  (id)
 );";
 
     dbDelta($sql);
+    
+    
+    
+    $old_plugin_path = Path::normalize(dirname(__FILE__)."../../wp-source-control");
+    $dir = opendir($old_plugin_path); 
+    if ($dir) {
+      // Perform upgrade
+      copy_directory($old_plugin_path, Path::normalize(dirname(__FILE__)."../../../source_control"));
+      $table_name = $wpdb->prefix."version_control_templates";
+      $results = $wpdb->get_results( "Select * from $table_name" );
+      
+      foreach ( $results as $r ) {
+        // upgrade database data.
+        $base_path = Path::normalize(dirname(__FILE__).'../../../');
+        $orig_file_name = str_replace($base_path, "", $r->orig_file_name);
+        $wpdb->update($table_name, array('orig_file_name' => $orig_file_name), array('id' => $r->id));
+
+        $file_name = str_replace($base_path."/plugins/wp-source-control", "", $r->file_name);
+        $wpdb->update($table_name, array('file_name' => $file_name), array('id' => $r->id));
+
+        $diff_file = str_replace($base_path."/plugins/wp-source-control", "", $r->diff_file);
+        $wpdb->update($table_name, array('diff_file' => $diff_file), array('id' => $r->id));
+        
+        rrmdir($old_plugin_path);
+      }
+    } else {
+      // User did not use previous version of Source Control.
+    }
 
 }
 register_activation_hook( __FILE__, 'wp_content_source_activate' );
+
+function copy_directory($src,$dst) { 
+    $dir = opendir($src); 
+    try{
+        @mkdir($dst); 
+        while(false !== ( $file = readdir($dir)) ) { 
+            if (( $file != '.' ) && ( $file != '..' )) { 
+                if ( is_dir($src . '/' . $file) ) { 
+                    copy_directory($src . '/' . $file,$dst . '/' . $file); 
+                } else { 
+                    copy($src . '/' . $file,$dst . '/' . $file);
+                } 
+            }   
+        }
+        closedir($dir); 
+    } catch(Exception $ex) {
+        return false;
+    }
+    return true;
+}
+
+function rrmdir($dir) {
+    foreach(glob($dir . '/*') as $file) {
+        if(is_dir($file))
+            rrmdir($file);
+        else
+            unlink($file);
+    }
+    rmdir($dir);
+}
 
 add_action( 'save_post', 'save_post_version' );
 function save_post_version( $postid ) {
@@ -93,13 +153,14 @@ function create_theme_snapshot($templates, $post_ids, $job_no, $description) {
         $date->setTimezone(new DateTimeZone('UTC'));
         $date_time_stamp = $date->getTimestamp();
         //echo (Path::normalize(dirname(__FILE__).'/version_'.$date_time_stamp));
-        mkdir(Path::normalize(dirname(__FILE__).'/version_'.$date_time_stamp));
-        mkdir(Path::normalize(dirname(__FILE__).'/version_'.$date_time_stamp."/themes"));
-        mkdir(Path::normalize(dirname(__FILE__).'/version_'.$date_time_stamp."/uploads"));
+        mkdir(Path::normalize(dirname(__FILE__).'../../../source_control/'));
+        mkdir(Path::normalize(dirname(__FILE__).'../../../source_control/version_'.$date_time_stamp));
+        mkdir(Path::normalize(dirname(__FILE__).'../../../source_control/version_'.$date_time_stamp."/themes"));
+        mkdir(Path::normalize(dirname(__FILE__).'../../../source_control/version_'.$date_time_stamp."/uploads"));
         
         $theme_file = Path::normalize(dirname(__FILE__)."../../../themes");
         // $upload_file = dirname(__FILE__)."../../../uploads";
-    	  $new_theme_file = Path::normalize(dirname(__FILE__).'/version_'.$date_time_stamp."/themes");
+    	  $new_theme_file = Path::normalize(dirname(__FILE__).'../../../source_control/version_'.$date_time_stamp."/themes");
         // $new_upload_file = dirname(__FILE__).'../version_'.$date_time_stamp."/uploads";
 
         global $wpdb;
@@ -132,7 +193,6 @@ function create_theme_snapshot($templates, $post_ids, $job_no, $description) {
 
 
 function print_updated_template_files($src) {
-
     global $wpdb;
     $table_name = $wpdb->prefix . "version_control_templates";
     $dir = opendir($src); 
@@ -143,10 +203,13 @@ function print_updated_template_files($src) {
             } 
             else { 
                 $formatted_src = str_replace("/", "::::", $src.'/'.$file);
-                $my_template = $wpdb->get_row( $wpdb->prepare("SELECT * FROM $table_name WHERE orig_file_name = %s ORDER BY template_timestamp DESC", $src . '/' . $file) );
+                $base_path = Path::normalize(dirname(__FILE__).'../../../');
+                $src_file = str_replace($base_path, "", $src . '/' . $file);
+                
+                $my_template = $wpdb->get_row( $wpdb->prepare("SELECT * FROM $table_name WHERE orig_file_name = %s ORDER BY template_timestamp DESC", $src_file) );
                 if ($my_template != null){
                     if ($my_template->template_timestamp != filemtime($src.'/'.$file)) {
-                        echo "<tr><td><input type=\"checkbox\" name=\"checkin_templates[]\" value=\"$formatted_src\"></td><td style='width: 800px;'>".$src.'/'.$file."</td><td>".date("l jS \of F Y h:i:s A", filemtime($src.'/'.$file))."</td><td><a href=\"".(get_option('siteurl'))."/wp-admin/admin.php?page=wp_content_source_control/source_control_list.php&vc_action=current_template_diff&id=".$my_template->id."\">Diff</a></td></tr>";
+                        echo "<tr><td><input type=\"checkbox\" name=\"checkin_templates[]\" value=\"$formatted_src\"></td><td style='width: 800px;'>".$src.'/'.$file."</td><td>".date("l jS \of F Y h:i:s A", filemtime($src.'/'.$file))."</td><td><a href=\"".(get_option('siteurl'))."/wp-admin/admin.php?page=wp-source-control/source_control_list.php&vc_action=current_template_diff&id=".$my_template->id."\">Diff</a></td></tr>";
                     }
                 } else {
                     echo "<tr><td><input type=\"checkbox\" name=\"checkin_templates[]\" value=\"$formatted_src\"></td><td style='width: 800px;'>".$src.'/'.$file."</td><td>".date("l jS \of F Y h:i:s A", filemtime($src.'/'.$file))."</td></tr>";
@@ -171,7 +234,10 @@ function get_updated_template_files($src) {
                 $content .= get_updated_template_files($src . '/' . $file); 
             } 
             else { 
-                $my_template = $wpdb->get_row( $wpdb->prepare("SELECT * FROM $table_name WHERE orig_file_name = %s ORDER BY template_timestamp DESC", $src . '/' . $file) );
+                $base_path = Path::normalize(dirname(__FILE__).'../../../');
+                $src_file = str_replace($base_path, "", $src . '/' . $file);
+                
+                $my_template = $wpdb->get_row( $wpdb->prepare("SELECT * FROM $table_name WHERE orig_file_name = %s ORDER BY template_timestamp DESC", $src_file) );
                 if ($my_template != null){
                     if ($my_template->template_timestamp != filemtime($src.'/'.$file)) {
                         $content .= $src.'/'.$file."</td><td>".date("l jS \of F Y h:i:s A", filemtime($src.'/'.$file))."::::";
@@ -204,18 +270,33 @@ function snapshot_directory($templates, $job_id,$src,$dst) {
                     // Check if user wants to check the file in.
                     if (in_array(str_replace("/", "::::", $src.'/'.$file), $templates)) {
                         // User does want to check file in.
-                        $my_template = $wpdb->get_row( $wpdb->prepare("SELECT * FROM $table_name WHERE orig_file_name = %s ORDER BY template_timestamp DESC", $src . '/' . $file) );
+                        $base_path = Path::normalize(dirname(__FILE__).'../../../');
+                        $src_file = str_replace($base_path, "", $src . '/' . $file);
+
+                        $my_template = $wpdb->get_row( $wpdb->prepare("SELECT * FROM $table_name WHERE orig_file_name = %s ORDER BY template_timestamp DESC", $src_file) );
                         // Check if file exists
                         if ($my_template != null){
                             // File exists
                             if ($my_template->template_timestamp != filemtime($src.'/'.$file)) {
-                                $rows_affected = $wpdb->insert( $table_name, array( 'job_id'=>$job_id, 'orig_file_name' => $src.'/'.$file, 'file_name' => $dst . '/' . $file, 'template_timestamp' => filemtime($src.'/'.$file), 'diff_file' => $dst . '/diff/' . $file) );
-                                copy($src . '/' . $file,$dst . '/' . $file);
-                                create_diff_file($my_template->file_name, $dst . '/' . $file, $dst . '/diff/' . $file);
+                                
+                                $base_path = Path::normalize(dirname(__FILE__).'../../../');
+                                $src_file = str_replace($base_path, "", $src . '/' . $file);
+                                $dst_file = str_replace($base_path."/source_control", "", $dst . '/' . $file);
+                                $dst_diff_file = str_replace($base_path."/source_control", "", $dst . '/diff/' . $file);
+                                
+                                $rows_affected = $wpdb->insert( $table_name, array( 'job_id'=>$job_id, 'orig_file_name' => $src_file, 'file_name' => $dst_file, 'template_timestamp' => filemtime($src.'/'.$file), 'diff_file' => $dst_diff_file) );
+                                copy($src . '/' . $file, $dst . '/' . $file);
+ 
+                                create_diff_file($base_path."/source_control/".$my_template->file_name, $dst . '/' . $file, $dst . '/diff/' . $file);
                             }
                         } else if ($my_template == null) {
+                          
                             // File Does not exist, So add it in.
-                            $rows_affected = $wpdb->insert( $table_name, array( 'job_id'=>$job_id, 'orig_file_name' => $src.'/'.$file, 'file_name' => $dst . '/' . $file, 'template_timestamp' => filemtime($src.'/'.$file)) );
+                            $base_path = Path::normalize(dirname(__FILE__).'../../../');
+                            $src_file = str_replace($base_path, "", $src . '/' . $file);
+                            $dst_file = str_replace($base_path."/source_control", "", $dst . '/' . $file);
+                            $dst_diff_file = str_replace($base_path, "", $dst . '/diff/' . $file);
+                            $rows_affected = $wpdb->insert( $table_name, array( 'job_id'=>$job_id, 'orig_file_name' => $src_file, 'file_name' => $dst_file, 'template_timestamp' => filemtime($src.'/'.$file)) );
                             copy($src . '/' . $file,$dst . '/' . $file);
                         } 
                     }

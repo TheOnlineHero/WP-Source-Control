@@ -9,7 +9,7 @@
   	  global $wpdb;
   		$table_name = $wpdb->prefix . "version_control_templates";
   		$my_template = $wpdb->get_row( $wpdb->prepare("SELECT * FROM $table_name WHERE id = %d", $id) );
-  		$lines = file($my_template->file_name);
+  		$lines = file(Path::normalize(dirname(__FILE__).'../../../source_control/').$my_template->file_name);
 
   		echo "<pre>";
   		foreach ($lines as $line_num => $line) {
